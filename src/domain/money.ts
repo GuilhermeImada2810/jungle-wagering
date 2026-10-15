@@ -20,4 +20,12 @@ export class Money {
 
     return new Money(new Decimal(props.amount), props.currency);
   }
+
+  toString(): string {
+    return this.value.toFixed(2);
+  }
+
+  toJSON(): MoneyProps {
+    return { amount: this.toString(), currency: this.currency };
+  }
 }
