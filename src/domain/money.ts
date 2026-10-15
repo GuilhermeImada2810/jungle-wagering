@@ -35,4 +35,11 @@ export class Money {
     }
     return new Money(this.value.plus(other.value), this.currency);
   }
+
+  subtract(other: Money): Money {
+    if (other.currency !== this.currency) {
+      throw new Error('moedas diferentes');
+    }
+    return new Money(this.value.minus(other.value), this.currency);
+  }
 }

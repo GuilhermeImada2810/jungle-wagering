@@ -39,3 +39,23 @@ describe('Money.add', () => {
     expect(() => brl.add(usd)).toThrow();
   });
 });
+
+describe('Money.subtract', () => {
+  test('subtrai valores', () => {
+    const a = Money.from({ amount: '10.00', currency: 'BRL' });
+    const b = Money.from({ amount: '3.50', currency: 'BRL' });
+    expect(a.subtract(b).toString()).toBe('6.50');
+  });
+
+  test('permite resultado negativo', () => {
+    const a = Money.from({ amount: '10.00', currency: 'BRL' });
+    const b = Money.from({ amount: '15.00', currency: 'BRL' });
+    expect(a.subtract(b).toString()).toBe('-5.00');
+  });
+
+  test('rejeita subtrair moedas diferentes', () => {
+    const brl = Money.from({ amount: '10.00', currency: 'BRL' });
+    const usd = Money.from({ amount: '10.00', currency: 'USD' });
+    expect(() => brl.subtract(usd)).toThrow();
+  });
+});
