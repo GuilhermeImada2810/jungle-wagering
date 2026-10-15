@@ -5,6 +5,8 @@ export interface MoneyProps {
   currency: string;
 }
 
+const AMOUNT_PATTERN = /^\d+(\.\d{1,2})?$/;
+
 export class Money {
   private constructor(
     private readonly value: Decimal,
@@ -12,8 +14,8 @@ export class Money {
   ) {}
 
   static from(props: MoneyProps): Money {
-    if (props.amount.trim() === '') {
-      throw new Error('amount não pode ser vazio');
+    if (!AMOUNT_PATTERN.test(props.amount)) {
+      throw new Error('amount inválido');
     }
 
     return new Money(new Decimal(props.amount), props.currency);
