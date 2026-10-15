@@ -25,3 +25,17 @@ describe('Money.from', () => {
     },
   );
 });
+
+describe('Money.add', () => {
+  test('soma sem erro de ponto flutuante', () => {
+    const a = Money.from({ amount: '0.10', currency: 'BRL' });
+    const b = Money.from({ amount: '0.20', currency: 'BRL' });
+    expect(a.add(b).toString()).toBe('0.30');
+  });
+
+  test('rejeita somar moedas diferentes', () => {
+    const brl = Money.from({ amount: '10.00', currency: 'BRL' });
+    const usd = Money.from({ amount: '10.00', currency: 'USD' });
+    expect(() => brl.add(usd)).toThrow();
+  });
+});

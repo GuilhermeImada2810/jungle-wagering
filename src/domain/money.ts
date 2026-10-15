@@ -28,4 +28,11 @@ export class Money {
   toJSON(): MoneyProps {
     return { amount: this.toString(), currency: this.currency };
   }
+
+  add(other: Money): Money {
+    if (other.currency !== this.currency) {
+      throw new Error('moedas diferentes');
+    }
+    return new Money(this.value.plus(other.value), this.currency);
+  }
 }
