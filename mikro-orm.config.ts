@@ -1,6 +1,6 @@
 ﻿import { defineConfig } from '@mikro-orm/postgresql';
 import { Migrator } from '@mikro-orm/migrations';
-import { WalletSchema } from './src/infrastructure/persistence/wallet.orm-entity.ts';
+import { WalletSchema } from './src/infrastructure/persistence/wallet.orm-entity.js';
 
 export default defineConfig({
   host: 'localhost',
