@@ -1,5 +1,5 @@
 ﻿import { Injectable, Logger } from '@nestjs/common';
-import type { EventPublisher, PublishableEvent } from '../../application/event-publisher.js';
+import type { EventPublisher, PublishableEvent } from '../application/event-publisher.js';
 
 /** Publisher de desenvolvimento: registra o evento em log JSON. Troque por SQS/SNS em producao. */
 @Injectable()
