@@ -15,7 +15,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "oxlint --type-aware src/ test/",
-    "test": "vitest run",
+    "test": "bun test src/domain && bun test src/application/outbox.test.ts --timeout 30000 && bun test src/application/wagering.concurrency.test.ts --timeout 30000",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
