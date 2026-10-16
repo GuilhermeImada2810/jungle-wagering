@@ -7,6 +7,7 @@ import { OutboxDispatcher } from './application/outbox-dispatcher.js';
 import { OutboxScheduler } from './application/outbox-scheduler.js';
 import { QueryService } from './application/query.service.js';
 import { ReconcileWalletUseCase } from './application/reconcile-wallet.use-case.js';
+import { ReferenceReprocessor } from './application/reference-reprocessor.js';
 import { SubmitWagerTransactionUseCase } from './application/submit-wager-transaction.use-case.js';
 import { DatabaseModule } from './infrastructure/database/database.module.js';
 import { LogEventPublisher } from './infrastructure/log-event-publisher.js';
@@ -32,6 +33,7 @@ import { WageringController } from './api/wagering.controller.js';
     SubmitWagerTransactionUseCase,
     QueryService,
     ReconcileWalletUseCase,
+    ReferenceReprocessor,
     OutboxDispatcher,
     OutboxScheduler,
     { provide: EVENT_PUBLISHER, useClass: LogEventPublisher },

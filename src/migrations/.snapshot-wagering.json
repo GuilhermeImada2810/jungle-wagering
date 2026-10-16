@@ -553,6 +553,23 @@
           "enumItems": [],
           "mappedType": "text"
         },
+        "reference_attempts": {
+          "name": "reference_attempts",
+          "type": "int",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "0",
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
         "reference_external_transaction_id": {
           "name": "reference_external_transaction_id",
           "type": "text",
@@ -569,6 +586,23 @@
           "collation": null,
           "enumItems": [],
           "mappedType": "text"
+        },
+        "reference_next_attempt_at": {
+          "name": "reference_next_attempt_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "datetime"
         },
         "reference_transaction_id": {
           "name": "reference_transaction_id",
@@ -680,6 +714,27 @@
         },
         {
           "columnNames": [
+            "reference_next_attempt_at",
+            "created_at"
+          ],
+          "composite": true,
+          "constraint": false,
+          "keyName": "wt_pending_ref_idx",
+          "primary": false,
+          "unique": false,
+          "where": "status = 'PENDING_REFERENCE'::text",
+          "columns": [
+            {
+              "name": "reference_next_attempt_at",
+              "nulls": "FIRST"
+            },
+            {
+              "name": "created_at"
+            }
+          ]
+        },
+        {
+          "columnNames": [
             "reference_transaction_id",
             "kind"
           ],
@@ -721,6 +776,12 @@
           "expression": "(status = 'PROCESSED'::text) = (processed_at IS NOT NULL)",
           "definition": "CHECK (((status = 'PROCESSED'::text) = (processed_at IS NOT NULL)))",
           "columnName": "processed_at"
+        },
+        {
+          "name": "wt_ref_attempts_ck",
+          "expression": "reference_attempts >= 0",
+          "definition": "CHECK ((reference_attempts >= 0))",
+          "columnName": "reference_attempts"
         },
         {
           "name": "wt_reference_ck",

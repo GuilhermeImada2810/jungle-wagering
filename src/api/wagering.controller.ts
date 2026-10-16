@@ -7,8 +7,8 @@
   HttpCode,
   Logger,
   NotFoundException,
-  NotImplementedException,
   Post,
+  Res,
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -16,8 +16,8 @@ import {
   IdempotencyConflictError,
   InvalidRequestError,
   SubmitWagerTransactionUseCase,
-  UnsupportedKindError,
   WalletNotFoundError,
+  type SubmitInput,
   type SubmitResult,
 } from '../application/submit-wager-transaction.use-case.js';
 
@@ -36,11 +36,16 @@ export class WageringController {
 
   constructor(private readonly submit: SubmitWagerTransactionUseCase) {}
 
+  /**
+   * 200 processada | 202 aguardando referencia | 400 payload invalido | 404 wallet
+   * 409 conflito de idempotencia | 422 rejeitada por regra de negocio | 503 transitorio
+   */
   @Post('transactions')
   @HttpCode(200)
   async create(
     @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Body() body: unknown,
+    @Res({ passthrough: true }) res: { status(code: number): unknown },
   ): Promise<SubmitResult> {
     const key = text(idempotencyKey, 'Idempotency-Key');
     const b = (body ?? {}) as Record<string, unknown>;
@@ -51,7 +56,7 @@ export class WageringController {
     if (!UUID.test(playerId) || !UUID.test(walletId)) {
       throw new BadRequestException('playerId e walletId devem ser UUID');
     }
-    const input = {
+    const input: SubmitInput = {
       idempotencyKey: key,
       providerId: text(b.providerId, 'providerId'),
       externalTransactionId: text(b.externalTransactionId, 'externalTransactionId'),
@@ -60,8 +65,17 @@ export class WageringController {
       roundId: text(b.roundId, 'roundId'),
       gameId: text(b.gameId, 'gameId'),
       kind: text(b.kind, 'kind'),
-      money: { amount: text(money.amount, 'money.amount'), currency: text(money.currency, 'money.currency') },
+      money: {
+        amount: text(money.amount, 'money.amount'),
+        currency: text(money.currency, 'money.currency'),
+      },
     };
+    if (b.referenceExternalTransactionId !== undefined) {
+      input.referenceExternalTransactionId = text(
+        b.referenceExternalTransactionId,
+        'referenceExternalTransactionId',
+      );
+    }
 
     let result: SubmitResult;
     try {
@@ -70,13 +84,13 @@ export class WageringController {
       if (error instanceof InvalidRequestError) throw new BadRequestException(error.message);
       if (error instanceof IdempotencyConflictError) throw new ConflictException(error.message);
       if (error instanceof WalletNotFoundError) throw new NotFoundException(error.message);
-      if (error instanceof UnsupportedKindError) throw new NotImplementedException(error.message);
       // nunca logar o payload financeiro, so a mensagem
       this.logger.error(`falha transitoria: ${(error as Error).message}`);
       throw new ServiceUnavailableException('falha transitoria, pode reenviar com a mesma key');
     }
 
     if (result.status === 'REJECTED') throw new UnprocessableEntityException(result);
+    if (result.status === 'PENDING_REFERENCE') res.status(202);
     return result;
   }
 }

@@ -8,22 +8,19 @@ import {
   InvalidTransactionError,
   WagerTransaction,
   WagerTransactionKind,
+  WagerTransactionStatus,
 } from '../domain/wager-transaction.js';
 import { InsufficientFundsError, Wallet } from '../domain/wallet.js';
 import type { WalletLedgerEntry } from '../domain/wallet-ledger-entry.js';
 import { PG_POOL } from '../infrastructure/database/database.module.js';
 import { withTransaction } from '../infrastructure/database/transaction.js';
+import { applyWalletEffects, emitTransactionEvents } from './persistence-helpers.js';
+import { resolveReversal } from './reversal.js';
 
 export class InvalidRequestError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'InvalidRequestError';
-  }
-}
-export class UnsupportedKindError extends Error {
-  constructor(kind: string) {
-    super(`${kind} ainda nao e suportado`);
-    this.name = 'UnsupportedKindError';
   }
 }
 export class WalletNotFoundError extends Error {
@@ -50,6 +47,7 @@ export interface SubmitInput {
   gameId: string;
   kind: string;
   money: MoneyProps;
+  referenceExternalTransactionId?: string;
 }
 
 export interface SubmitResult {
@@ -60,11 +58,7 @@ export interface SubmitResult {
   idempotentReplay: boolean;
 }
 
-const SUPPORTED = [
-  WagerTransactionKind.Bet,
-  WagerTransactionKind.Win,
-  WagerTransactionKind.Loss,
-];
+const REFERENCE_FIRST_RETRY_MS = 5000;
 
 @Injectable()
 export class SubmitWagerTransactionUseCase {
@@ -80,6 +74,8 @@ export class SubmitWagerTransactionUseCase {
       throw new InvalidRequestError('money invalido');
     }
 
+    const isReversal =
+      kind === WagerTransactionKind.Refund || kind === WagerTransactionKind.Rollback;
     const payloadHash = computePayloadHash({
       providerId: input.providerId,
       externalTransactionId: input.externalTransactionId,
@@ -89,6 +85,7 @@ export class SubmitWagerTransactionUseCase {
       gameId: input.gameId,
       kind,
       money,
+      referenceExternalTransactionId: isReversal ? input.referenceExternalTransactionId : undefined,
     });
 
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -109,7 +106,6 @@ export class SubmitWagerTransactionUseCase {
     if (!kind || kind === WagerTransactionKind.Opening) {
       throw new InvalidRequestError('kind invalido');
     }
-    if (!SUPPORTED.includes(kind)) throw new UnsupportedKindError(kind);
     return kind;
   }
 
@@ -132,7 +128,7 @@ export class SubmitWagerTransactionUseCase {
       throw new InvalidRequestError('walletId nao pertence ao playerId');
     }
 
-    // 2) Idempotencia: ja existe?
+    // 2) Idempotencia
     const ex = await db.query(
       `SELECT id, status, failure_code, balance_after, payload_hash, idempotency_key, currency
          FROM wager_transactions
@@ -144,14 +140,14 @@ export class SubmitWagerTransactionUseCase {
         (r) => r.payload_hash === payloadHash && r.idempotency_key === input.idempotencyKey,
       );
       if (!same) throw new IdempotencyConflictError();
-      const result: SubmitResult = {
+      const replay: SubmitResult = {
         transactionId: same.id,
         status: same.status,
         balance: { amount: same.balance_after ?? row.balance, currency: same.currency },
         idempotentReplay: true,
       };
-      if (same.failure_code) result.failureCode = same.failure_code;
-      return result;
+      if (same.failure_code) replay.failureCode = same.failure_code;
+      return replay;
     }
 
     // 3) Regra de negocio no dominio
@@ -166,6 +162,7 @@ export class SubmitWagerTransactionUseCase {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     });
+    const previousVersion = wallet.version;
 
     let tx: WagerTransaction;
     try {
@@ -181,12 +178,13 @@ export class SubmitWagerTransactionUseCase {
         gameId: input.gameId,
         kind,
         money,
+        ...(input.referenceExternalTransactionId
+          ? { referenceExternalTransactionId: input.referenceExternalTransactionId }
+          : {}),
         createdAt: now,
       });
     } catch (error) {
-      if (error instanceof InvalidTransactionError) {
-        throw new InvalidRequestError(error.message);
-      }
+      if (error instanceof InvalidTransactionError) throw new InvalidRequestError(error.message);
       throw error;
     }
 
@@ -195,7 +193,7 @@ export class SubmitWagerTransactionUseCase {
       tx.reject(FailureCode.CurrencyMismatch);
     } else if (kind === WagerTransactionKind.Loss) {
       tx.markProcessed(undefined, now);
-    } else {
+    } else if (kind === WagerTransactionKind.Bet || kind === WagerTransactionKind.Win) {
       try {
         const movement = { entryId: randomUUID(), transactionId: txId, money, at: now };
         entry =
@@ -206,15 +204,19 @@ export class SubmitWagerTransactionUseCase {
         else if (error instanceof CurrencyMismatchError) tx.reject(FailureCode.CurrencyMismatch);
         else throw error;
       }
+    } else {
+      entry = (await resolveReversal(db, wallet, tx, now)).entry;
     }
 
     // 4) Persistencia: transacao, ledger, saldo e outbox, tudo no mesmo COMMIT
+    const pending = tx.status === WagerTransactionStatus.PendingReference;
     const inserted = await db.query(
       `INSERT INTO wager_transactions
          (id, provider_id, external_transaction_id, idempotency_key, payload_hash,
           wallet_id, player_id, round_id, game_id, kind, amount, currency,
-          status, failure_code, balance_after, created_at, processed_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+          status, failure_code, balance_after, created_at, processed_at,
+          reference_external_transaction_id, reference_transaction_id, reference_next_attempt_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
        ON CONFLICT DO NOTHING RETURNING id`,
       [
         txId,
@@ -234,64 +236,15 @@ export class SubmitWagerTransactionUseCase {
         wallet.balance.toString(),
         now,
         tx.processedAt ?? null,
+        tx.referenceExternalTransactionId ?? null,
+        tx.referenceTransactionId ?? null,
+        pending ? new Date(now.getTime() + REFERENCE_FIRST_RETRY_MS) : null,
       ],
     );
     if (inserted.rowCount === 0) throw new IdempotencyRaceError('corrida de idempotencia');
 
-    if (entry) {
-      await db.query(
-        `INSERT INTO wallet_ledger_entries
-           (id, wallet_id, transaction_id, direction, amount, balance_before, balance_after, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [
-          entry.id,
-          wallet.id,
-          txId,
-          entry.direction,
-          entry.money.toString(),
-          entry.balanceBefore.toString(),
-          entry.balanceAfter.toString(),
-          now,
-        ],
-      );
-      const upd = await db.query(
-        `UPDATE wallets SET balance = $1, version = $2, updated_at = $3
-          WHERE id = $4 AND version = $5`,
-        [wallet.balance.toString(), wallet.version, now, wallet.id, row.version],
-      );
-      if (upd.rowCount !== 1) throw new Error('conflito de versao da wallet');
-    }
-
-    const base = {
-      transactionId: txId,
-      walletId: wallet.id,
-      providerId: input.providerId,
-      externalTransactionId: input.externalTransactionId,
-      kind,
-      money: money.toJSON(),
-    };
-    if (tx.status === 'PROCESSED') {
-      await this.enqueue(db, 'WagerTransactionProcessed', txId, txId, {
-        ...base,
-        balanceAfter: wallet.balance.toJSON(),
-      }, now);
-    } else {
-      await this.enqueue(db, 'WagerTransactionRejected', txId, txId, {
-        ...base,
-        failureCode: tx.failureCode,
-      }, now);
-    }
-    if (entry) {
-      await this.enqueue(db, 'WalletBalanceChanged', wallet.id, txId, {
-        walletId: wallet.id,
-        transactionId: txId,
-        direction: entry.direction,
-        money: entry.money.toJSON(),
-        balanceBefore: entry.balanceBefore.toJSON(),
-        balanceAfter: entry.balanceAfter.toJSON(),
-        walletVersion: wallet.version,
-      }, now);
-    }
+    if (entry) await applyWalletEffects(db, wallet, previousVersion, entry, now);
+    await emitTransactionEvents(db, tx, wallet, entry, now);
 
     const result: SubmitResult = {
       transactionId: txId,
@@ -301,30 +254,5 @@ export class SubmitWagerTransactionUseCase {
     };
     if (tx.failureCode) result.failureCode = tx.failureCode;
     return result;
-  }
-
-  private async enqueue(
-    db: PoolClient,
-    eventType: string,
-    aggregateId: string,
-    correlationId: string,
-    data: Record<string, unknown>,
-    occurredAt: Date,
-  ): Promise<void> {
-    const eventId = randomUUID();
-    const envelope = {
-      eventId,
-      eventType,
-      aggregateId,
-      correlationId,
-      occurredAt: occurredAt.toISOString(),
-      version: 1,
-      data,
-    };
-    await db.query(
-      `INSERT INTO outbox_messages (id, aggregate_id, event_type, payload, occurred_at)
-       VALUES ($1,$2,$3,$4,$5)`,
-      [eventId, aggregateId, eventType, JSON.stringify(envelope), occurredAt],
-    );
   }
 }

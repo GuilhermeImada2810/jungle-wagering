@@ -1,4 +1,4 @@
-﻿import { afterAll, describe, expect, test } from 'bun:test';
+﻿import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import type { EventPublisher, PublishableEvent } from './event-publisher.js';
@@ -11,6 +11,11 @@ const pool = new Pool({
   password: 'wagering',
   database: 'wagering',
   max: 10,
+});
+
+// Isola o teste: descarta eventos pendentes deixados por outros testes.
+beforeAll(async () => {
+  await pool.query(`UPDATE outbox_messages SET published_at = now() WHERE published_at IS NULL`);
 });
 
 afterAll(async () => {
@@ -39,6 +44,13 @@ class Recorder implements EventPublisher {
   }
 }
 
+async function drain(d: OutboxDispatcher): Promise<void> {
+  for (let i = 0; i < 200; i++) {
+    const r = await d.dispatchBatch(5);
+    if (r.published + r.failed === 0) break;
+  }
+}
+
 describe('outbox publisher (Postgres real)', () => {
   test('dois publishers concorrentes nao publicam o mesmo evento', async () => {
     const ids = await seed(40);
@@ -46,11 +58,7 @@ describe('outbox publisher (Postgres real)', () => {
     const a = new Recorder(mine);
     const b = new Recorder(mine);
 
-    // lotes pequenos forcam varias rodadas concorrentes
-    const run = async (d: OutboxDispatcher) => {
-      for (let i = 0; i < 10; i++) await d.dispatchBatch(5);
-    };
-    await Promise.all([run(new OutboxDispatcher(pool, a)), run(new OutboxDispatcher(pool, b))]);
+    await Promise.all([drain(new OutboxDispatcher(pool, a)), drain(new OutboxDispatcher(pool, b))]);
 
     const all = [...a.seen, ...b.seen];
     expect(all.length).toBe(40);
@@ -86,11 +94,7 @@ describe('outbox publisher (Postgres real)', () => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query(
-        `SELECT id FROM outbox_messages WHERE id = $1 FOR UPDATE SKIP LOCKED`,
-        [id],
-      );
-      // simula crash: publica no broker mas a transacao nunca confirma
+      await client.query(`SELECT id FROM outbox_messages WHERE id = $1 FOR UPDATE SKIP LOCKED`, [id]);
       await client.query('ROLLBACK');
     } finally {
       client.release();
