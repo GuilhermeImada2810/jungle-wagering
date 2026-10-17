@@ -21,6 +21,7 @@ import {
   WalletNotFoundError,
 } from '../../application/submit-wager-transaction.use-case.js';
 import { PG_POOL } from '../database/database.module.js';
+import { metrics } from '../metrics.js';
 import { withTransaction } from '../database/transaction.js';
 import { SqsService, type QueueUrls } from './sqs.service.js';
 import { parseWagerMessage, PermanentMessageError, type ParsedMessage } from './wager-message.js';
@@ -96,6 +97,7 @@ export class WagerQueueConsumer implements OnApplicationBootstrap, OnApplication
         try {
           await this.sendToDlq(m, urls.dlq);
           await this.ack(m, urls.inbound);
+          metrics.inc('wager_dlq_messages_total');
           this.log('sqs_message_dead_lettered', { reason: error.message });
           return;
         } catch (dlqError) {
@@ -105,6 +107,7 @@ export class WagerQueueConsumer implements OnApplicationBootstrap, OnApplication
       // transitorio: nao faz ack; backoff na visibilidade. Apos maxReceiveCount o SQS move para a DLQ.
       const delay = Math.min(2 ** receiveCount * 2, 300);
       await this.changeVisibility(m, urls.inbound, delay);
+      metrics.inc('wager_retries_total');
       this.log('sqs_message_retry', { receiveCount, delaySeconds: delay, error: (error as Error).message });
     }
   }
@@ -177,5 +180,6 @@ export class WagerQueueConsumer implements OnApplicationBootstrap, OnApplication
     this.logger.log(JSON.stringify({ event, ...fields }));
   }
 }
+
 
 

@@ -19,6 +19,7 @@ import { QueryController } from './api/query.controller.js';
 import { ReconciliationController } from './api/reconciliation.controller.js';
 import { WalletsController } from './api/wallets.controller.js';
 import { WageringController } from './api/wagering.controller.js';
+import { MetricsController } from './api/metrics.controller.js';
 
 @Module({
   imports: [DatabaseModule],
@@ -28,6 +29,7 @@ import { WageringController } from './api/wagering.controller.js';
     WageringController,
     QueryController,
     ReconciliationController,
+    MetricsController,
   ],
   providers: [
     CreateWalletUseCase,
@@ -47,3 +49,4 @@ import { WageringController } from './api/wagering.controller.js';
   ],
 })
 export class AppModule {}
+

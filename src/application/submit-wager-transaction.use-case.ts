@@ -16,6 +16,8 @@ import { PG_POOL } from '../infrastructure/database/database.module.js';
 import { withTransaction } from '../infrastructure/database/transaction.js';
 import { applyWalletEffects, emitTransactionEvents } from './persistence-helpers.js';
 import { resolveReversal } from './reversal.js';
+import { logJson } from '../infrastructure/json-logger.js';
+import { metrics } from '../infrastructure/metrics.js';
 
 export class InvalidRequestError extends Error {
   constructor(message: string) {
@@ -65,6 +67,15 @@ export class SubmitWagerTransactionUseCase {
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
   async execute(input: SubmitInput, db?: PoolClient): Promise<SubmitResult> {
+    const started = process.hrtime.bigint();
+    try {
+      return await this.executeInner(input, db);
+    } finally {
+      metrics.observe('wager_processing_seconds', Number(process.hrtime.bigint() - started) / 1e9);
+    }
+  }
+
+  private async executeInner(input: SubmitInput, db?: PoolClient): Promise<SubmitResult> {
     const kind = this.parseKind(input.kind);
     let money: Money;
     try {
@@ -141,7 +152,11 @@ export class SubmitWagerTransactionUseCase {
       const same = ex.rows.find(
         (r) => r.payload_hash === payloadHash && r.idempotency_key === input.idempotencyKey,
       );
-      if (!same) throw new IdempotencyConflictError();
+      if (!same) {
+        metrics.inc('wager_idempotency_conflicts_total');
+        throw new IdempotencyConflictError();
+      }
+      metrics.inc('wager_duplicates_total');
       const replay: SubmitResult = {
         transactionId: same.id,
         status: same.status,
@@ -248,6 +263,15 @@ export class SubmitWagerTransactionUseCase {
     if (entry) await applyWalletEffects(db, wallet, previousVersion, entry, now);
     await emitTransactionEvents(db, tx, wallet, entry, now);
 
+    metrics.inc('wager_transactions_total', { status: tx.status, kind });
+    logJson('info', 'wager_transaction_result', {
+      correlationId: txId,
+      transactionId: txId,
+      walletId: input.walletId,
+      providerId: input.providerId,
+      status: tx.status,
+      failureCode: tx.failureCode,
+    });
     const result: SubmitResult = {
       transactionId: txId,
       status: tx.status,
@@ -258,4 +282,6 @@ export class SubmitWagerTransactionUseCase {
     return result;
   }
 }
+
+
 

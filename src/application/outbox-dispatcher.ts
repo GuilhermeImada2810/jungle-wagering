@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 import { PG_POOL } from '../infrastructure/database/database.module.js';
 import { withTransaction } from '../infrastructure/database/transaction.js';
 import { EVENT_PUBLISHER, type EventPublisher } from './event-publisher.js';
+import { metrics } from '../infrastructure/metrics.js';
 
 export interface DispatchResult {
   published: number;
@@ -55,6 +56,7 @@ export class OutboxDispatcher {
               WHERE id = $1`,
             [row.id, attempts, String(delaySeconds)],
           );
+          metrics.inc('wager_outbox_publish_failures_total');
           failed += 1;
         }
       }
@@ -70,3 +72,4 @@ export class OutboxDispatcher {
     return r.rows[0].lag as number;
   }
 }
+
