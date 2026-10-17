@@ -1,6 +1,6 @@
 ﻿import { Module } from '@nestjs/common';
-import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
+import { APP_GUARD } from '@nestjs/core';
+import { AuthGuard } from './auth/auth.guard.js';
 import { CreateWalletUseCase } from './application/create-wallet.use-case.js';
 import { EVENT_PUBLISHER } from './application/event-publisher.js';
 import { OutboxDispatcher } from './application/outbox-dispatcher.js';
@@ -20,7 +20,6 @@ import { WageringController } from './api/wagering.controller.js';
 @Module({
   imports: [DatabaseModule],
   controllers: [
-    AppController,
     HealthController,
     WalletsController,
     WageringController,
@@ -28,7 +27,6 @@ import { WageringController } from './api/wagering.controller.js';
     ReconciliationController,
   ],
   providers: [
-    AppService,
     CreateWalletUseCase,
     SubmitWagerTransactionUseCase,
     QueryService,
@@ -37,6 +35,7 @@ import { WageringController } from './api/wagering.controller.js';
     OutboxDispatcher,
     OutboxScheduler,
     { provide: EVENT_PUBLISHER, useClass: LogEventPublisher },
+    { provide: APP_GUARD, useClass: AuthGuard },
   ],
 })
 export class AppModule {}
