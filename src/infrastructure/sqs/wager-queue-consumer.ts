@@ -110,7 +110,7 @@ export class WagerQueueConsumer implements OnApplicationBootstrap, OnApplication
   }
 
   /** Inbox + saldo + ledger + outbox na MESMA transacao. */
-  private async process(parsed: ParsedMessage, body: string): Promise<Outcome> {
+  protected async process(parsed: ParsedMessage, body: string): Promise<Outcome> {
     const hash = createHash('sha256').update(body).digest('hex');
     try {
       return await withTransaction(this.pool, async (db): Promise<Outcome> => {
@@ -177,4 +177,5 @@ export class WagerQueueConsumer implements OnApplicationBootstrap, OnApplication
     this.logger.log(JSON.stringify({ event, ...fields }));
   }
 }
+
 
