@@ -152,7 +152,7 @@ export class WagerQueueConsumer implements OnApplicationBootstrap, OnApplication
     );
   }
 
-  private async ack(m: Message, queueUrl: string): Promise<void> {
+  protected async ack(m: Message, queueUrl: string): Promise<void> {
     await this.sqs.client.send(
       new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: m.ReceiptHandle }),
     );
@@ -177,3 +177,4 @@ export class WagerQueueConsumer implements OnApplicationBootstrap, OnApplication
     this.logger.log(JSON.stringify({ event, ...fields }));
   }
 }
+

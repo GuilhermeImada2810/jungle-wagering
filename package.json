@@ -15,7 +15,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "oxlint --type-aware src/ test/",
-    "test": "bun test src/domain && bun test src/application/outbox.test.ts --timeout 30000 && bun test src/application/wagering.concurrency.test.ts --timeout 30000 && bun test src/application/reversal.test.ts --timeout 30000 && bun test src/application/queue-consumer.test.ts --timeout 60000",
+    "test": "bun test src/domain && bun test src/application/outbox.test.ts --timeout 30000 && bun test src/application/wagering.concurrency.test.ts --timeout 30000 && bun test src/application/reversal.test.ts --timeout 30000 && bun test src/application/queue-consumer.test.ts --timeout 60000 && bun test src/application/crash-recovery.test.ts --timeout 60000",
     "migration:up": "bunx --bun mikro-orm migration:up",
     "migration:down": "bunx --bun mikro-orm migration:down",
     "test:multi": "bun run build && bun test src/application/multi-instance.test.ts --timeout 120000"
