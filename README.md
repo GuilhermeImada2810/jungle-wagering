@@ -23,9 +23,9 @@ Stack: Bun, TypeScript (strict), NestJS, PostgreSQL 16, MikroORM (migrations), D
 | Consultas (wallet, ledger paginado por cursor, transações) | Feito |
 | Reconciliação | Feito |
 | Transactional Outbox + publisher com SKIP LOCKED | Feito |
-| Health live e ready (Postgres) | Feito |
-| **Consumidor SQS + inbox + DLQ** | **Não implementado** (desenho no ARCHITECTURE.md) |
-| **Publicação real em SQS/SNS** | **Não implementado** (publisher atual só registra em log) |
+| Health live e ready (Postgres e SQS) | Feito |
+| Consumidor SQS + inbox + DLQ (erros permanentes) | Feito, testado com LocalStack real |
+| Publicação da outbox em SQS (wager-events.fifo) | Feito (`EVENT_PUBLISHER=log` volta ao publisher de log) |
 | **Métricas e logs JSON estruturados completos** | **Parcial** (logs simples, sem métricas) |
 | Classes InboxMessage / OutboxMessage / IntegrationEvent | Não implementado (eventos montados como objetos) |
 | Teste com 3 ou mais instâncias, teste de carga | Não implementado |
@@ -143,4 +143,5 @@ api/ Controllers HTTP
 infrastructure/ Pool pg, helper de transação, publisher de eventos
 migrations/ Migrations MikroORM (up e down)
 auth/ AuthGuard no-op
+
 

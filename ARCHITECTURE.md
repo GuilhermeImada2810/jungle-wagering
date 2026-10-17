@@ -165,11 +165,11 @@ JSON estruturados em todo o fluxo. O lag da outbox já pode ser calculado por `O
 
 ## 14. Limitações conhecidas (honestas)
 
-1. **SQS não implementado**: sem consumidor, sem inbox em uso, sem DLQ, sem shutdown de consumidor. A tabela `inbox_messages` existe e está testada no banco.
+1. **SQS implementado com limites**: consumidor, inbox na mesma transação, DLQ para erro permanente e shutdown limpo existem e têm teste com LocalStack. **Não testado**: a movimentação automática para a DLQ após 5 recebimentos (retry transitório) e o crash entre commit e ack.
    Desenho: consumidor de `wager-transactions.fifo` que, numa transação, insere em `inbox_messages` (`ON CONFLICT DO NOTHING`), chama o **mesmo**
    `SubmitWagerTransactionUseCase` e só então faz ack; erro de negócio = ack (terminal), transitório = não faz ack (visibilidade/backoff),
    permanente ou acima do limite = DLQ. FIFO não é a garantia final: o banco continua dono das invariantes.
-2. **O publisher da outbox só registra em log** (`LogEventPublisher`). Trocar por SQS/SNS exige só uma nova implementação da porta `EventPublisher`.
+2. **O publisher da outbox publica em `wager-events.fifo`** (`SqsEventPublisher`); sem teste automatizado de publicação em SQS real. Trocar por SQS/SNS exige só uma nova implementação da porta `EventPublisher`.
 3. O publisher chama o broker **dentro** da transação (com locks de linha da outbox). Simples e correto para at-least-once, mas um broker lento
    segura a transação. Alternativa: marcar com lease e publicar fora.
 4. Eventos e inbox/outbox não são classes de domínio (`IntegrationEvent`, `InboxMessage`, `OutboxMessage`): o evento é um objeto montado no helper.
@@ -179,3 +179,4 @@ JSON estruturados em todo o fluxo. O lag da outbox já pode ser calculado por `O
 8. Os testes de integração exigem o servidor parado (ou `OUTBOX_DISABLED=true`) e rodam arquivo a arquivo.
 9. `/health/ready` não verifica SQS (não é usado).
 10. Reversão parcial está fora de escopo, como no enunciado.
+

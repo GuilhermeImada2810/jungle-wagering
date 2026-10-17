@@ -64,7 +64,7 @@ const REFERENCE_FIRST_RETRY_MS = 5000;
 export class SubmitWagerTransactionUseCase {
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
-  async execute(input: SubmitInput): Promise<SubmitResult> {
+  async execute(input: SubmitInput, db?: PoolClient): Promise<SubmitResult> {
     const kind = this.parseKind(input.kind);
     let money: Money;
     try {
@@ -87,6 +87,8 @@ export class SubmitWagerTransactionUseCase {
       money,
       referenceExternalTransactionId: isReversal ? input.referenceExternalTransactionId : undefined,
     });
+
+    if (db) return this.run(db, input, kind, money, payloadHash);
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -256,3 +258,4 @@ export class SubmitWagerTransactionUseCase {
     return result;
   }
 }
+

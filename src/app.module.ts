@@ -11,6 +11,9 @@ import { ReferenceReprocessor } from './application/reference-reprocessor.js';
 import { SubmitWagerTransactionUseCase } from './application/submit-wager-transaction.use-case.js';
 import { DatabaseModule } from './infrastructure/database/database.module.js';
 import { LogEventPublisher } from './infrastructure/log-event-publisher.js';
+import { SqsEventPublisher } from './infrastructure/sqs/sqs-event-publisher.js';
+import { SqsService } from './infrastructure/sqs/sqs.service.js';
+import { WagerQueueConsumer } from './infrastructure/sqs/wager-queue-consumer.js';
 import { HealthController } from './health/health.controller.js';
 import { QueryController } from './api/query.controller.js';
 import { ReconciliationController } from './api/reconciliation.controller.js';
@@ -34,7 +37,12 @@ import { WageringController } from './api/wagering.controller.js';
     ReferenceReprocessor,
     OutboxDispatcher,
     OutboxScheduler,
-    { provide: EVENT_PUBLISHER, useClass: LogEventPublisher },
+    SqsService,
+    WagerQueueConsumer,
+    {
+      provide: EVENT_PUBLISHER,
+      useClass: process.env.EVENT_PUBLISHER === 'log' ? LogEventPublisher : SqsEventPublisher,
+    },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
 })
