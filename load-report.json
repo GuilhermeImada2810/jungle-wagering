@@ -1,0 +1,68 @@
+{
+  "environment": {
+    "node": "v26.3.0",
+    "os": "win32 10.0.26300",
+    "cpus": 8,
+    "instances": 3,
+    "postgres": "postgres:16 em Docker, mesma maquina"
+  },
+  "parameters": {
+    "wallets": 200,
+    "requests": 4000,
+    "hotRequests": 400,
+    "concurrency": 64,
+    "dupRate": 0.1
+  },
+  "phases": [
+    {
+      "name": "A: carga espalhada (10% de reenvios)",
+      "requests": 4000,
+      "http200": 4000,
+      "http422": 0,
+      "errors": 0,
+      "replays": 386,
+      "uniqueProcessed": 3614,
+      "seconds": 10.54,
+      "rps": 379,
+      "p50ms": 139.36,
+      "p95ms": 308.21,
+      "p99ms": 562.04,
+      "maxMs": 3008.25
+    },
+    {
+      "name": "B: wallet quente (saldo 100, apostas de 1)",
+      "requests": 400,
+      "http200": 100,
+      "http422": 300,
+      "errors": 0,
+      "replays": 0,
+      "uniqueProcessed": 100,
+      "seconds": 5.82,
+      "rps": 69,
+      "p50ms": 797.48,
+      "p95ms": 1537.48,
+      "p99ms": 2496.71,
+      "maxMs": 2611.5
+    }
+  ],
+  "outbox": {
+    "peakPending": 4979,
+    "drainSeconds": 25.161457399999996,
+    "drained": true
+  },
+  "metricsSummedAcrossInstances": {
+    "wager_transactions_total": 4014,
+    "wager_duplicates_total": 386,
+    "wager_processing_seconds_sum": 995.2891807999999,
+    "wager_processing_seconds_count": 4400
+  },
+  "notImplemented": [
+    "contador de conflitos de lock (FOR UPDATE)"
+  ],
+  "checks": {
+    "ledgerMatchesBalanceOnAllWallets": true,
+    "totalDebitedMatchesProcessedBets": true,
+    "hotWalletProcessedExactly100": true,
+    "noServerErrors": true
+  }
+}
