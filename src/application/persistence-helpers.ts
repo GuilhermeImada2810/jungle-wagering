@@ -1,33 +1,30 @@
 ﻿import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
+import {
+  type EventContext,
+  type IntegrationEvent,
+  type TransactionEventData,
+  WagerTransactionPendingReference,
+  WagerTransactionProcessed,
+  WagerTransactionRejected,
+  WalletBalanceChanged,
+} from '../domain/integration-event.js';
+import { OutboxMessage } from '../domain/outbox-message.js';
 import type { WagerTransaction } from '../domain/wager-transaction.js';
 import { WagerTransactionStatus } from '../domain/wager-transaction.js';
 import type { Wallet } from '../domain/wallet.js';
 import type { WalletLedgerEntry } from '../domain/wallet-ledger-entry.js';
 
 /** Grava um evento na outbox, dentro da transacao do chamador. */
-export async function enqueueEvent(
+export async function enqueueIntegrationEvent(
   db: PoolClient,
-  eventType: string,
-  aggregateId: string,
-  correlationId: string,
-  data: Record<string, unknown>,
-  occurredAt: Date,
+  event: IntegrationEvent<unknown>,
 ): Promise<void> {
-  const eventId = randomUUID();
-  const envelope = {
-    eventId,
-    eventType,
-    aggregateId,
-    correlationId,
-    occurredAt: occurredAt.toISOString(),
-    version: 1,
-    data,
-  };
+  const msg = OutboxMessage.enqueue(event);
   await db.query(
     `INSERT INTO outbox_messages (id, aggregate_id, event_type, payload, occurred_at)
      VALUES ($1,$2,$3,$4,$5)`,
-    [eventId, aggregateId, eventType, JSON.stringify(envelope), occurredAt],
+    [msg.id, msg.aggregateId, msg.eventType, JSON.stringify(msg.payload), msg.occurredAt],
   );
 }
 
@@ -70,7 +67,12 @@ export async function emitTransactionEvents(
   entry: WalletLedgerEntry | undefined,
   now: Date,
 ): Promise<void> {
-  const base = {
+  const ctx = (): EventContext => ({
+    eventId: randomUUID(),
+    correlationId: tx.id,
+    occurredAt: now,
+  });
+  const base: TransactionEventData = {
     transactionId: tx.id,
     walletId: wallet.id,
     providerId: tx.providerId,
@@ -78,31 +80,43 @@ export async function emitTransactionEvents(
     kind: tx.kind,
     money: tx.money.toJSON(),
   };
+
   if (tx.status === WagerTransactionStatus.Processed) {
-    await enqueueEvent(db, 'WagerTransactionProcessed', tx.id, tx.id, {
-      ...base,
-      balanceAfter: wallet.balance.toJSON(),
-    }, now);
+    await enqueueIntegrationEvent(
+      db,
+      WagerTransactionProcessed.from(tx.id, { ...base, balanceAfter: wallet.balance.toJSON() }, ctx()),
+    );
   } else if (tx.status === WagerTransactionStatus.Rejected) {
-    await enqueueEvent(db, 'WagerTransactionRejected', tx.id, tx.id, {
-      ...base,
-      failureCode: tx.failureCode,
-    }, now);
+    await enqueueIntegrationEvent(
+      db,
+      WagerTransactionRejected.from(tx.id, { ...base, failureCode: tx.failureCode }, ctx()),
+    );
   } else if (tx.status === WagerTransactionStatus.PendingReference) {
-    await enqueueEvent(db, 'WagerTransactionPendingReference', tx.id, tx.id, {
-      ...base,
-      referenceExternalTransactionId: tx.referenceExternalTransactionId,
-    }, now);
+    await enqueueIntegrationEvent(
+      db,
+      WagerTransactionPendingReference.from(
+        tx.id,
+        { ...base, referenceExternalTransactionId: tx.referenceExternalTransactionId },
+        ctx(),
+      ),
+    );
   }
   if (entry) {
-    await enqueueEvent(db, 'WalletBalanceChanged', wallet.id, tx.id, {
-      walletId: wallet.id,
-      transactionId: tx.id,
-      direction: entry.direction,
-      money: entry.money.toJSON(),
-      balanceBefore: entry.balanceBefore.toJSON(),
-      balanceAfter: entry.balanceAfter.toJSON(),
-      walletVersion: wallet.version,
-    }, now);
+    await enqueueIntegrationEvent(
+      db,
+      WalletBalanceChanged.from(
+        wallet.id,
+        {
+          walletId: wallet.id,
+          transactionId: tx.id,
+          direction: entry.direction,
+          money: entry.money.toJSON(),
+          balanceBefore: entry.balanceBefore.toJSON(),
+          balanceAfter: entry.balanceAfter.toJSON(),
+          walletVersion: wallet.version,
+        },
+        ctx(),
+      ),
+    );
   }
 }
